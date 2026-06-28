@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<config_batch version="2.1">
+
+  <!-- ============================================================
+       Batch system definition for Lemaitre4 (CECI/CISM, UCLouvain)
+
+       SLURM is already defined generically in the main config_batch.xml
+       shipped with CESM. The generic block provides:
+         batch_directive = #SBATCH
+         walltime_format = HH:MM:SS
+         depend_string   for afterok job dependencies
+         batch_query     = squeue
+         standard directives for job-name, nodes, ntasks-per-node, output.
+
+       This file only adds the bits that are specific to Lemaitre4:
+         (1) sbatch with time and partition on the submit line
+         (2) one partition "batch" (the only one available, max 2 days)
+         (3) no account / qos, because Lemaitre4 has no accounting
+             project (PROJECT_REQUIRED=FALSE in config_machines.xml)
+       ============================================================ -->
+  <batch_system MACH="lemaitre4" type="slurm">
+
+    <batch_submit>sbatch</batch_submit>
+
+    <!-- Arguments added on the sbatch command line (not as #SBATCH
+         directives in the script). Walltime and partition are passed
+         here so CIME can override them per-job (e.g. shorter walltime
+         for st_archive). -->
+    <submit_args>
+      <arg flag="--time" name="$JOB_WALLCLOCK_TIME"/>
+      <arg flag="--partition" name="$JOB_QUEUE"/>
+    </submit_args>
+
+    <!-- Extra #SBATCH directives added to the run script.
+         The generic slurm block already provides job-name, nodes,
+         ntasks-per-node and output. We add two more:
+
+           "export=ALL"  : propagate the login environment (loaded
+                           modules, OMP vars) to the compute nodes.
+                           Important because CIME loads the modules
+                           in the .case.run script header and we want
+                           srun to inherit them.
+
+           "hint=nomultithread" : tell SLURM to allocate one task per
+                           physical core, not per hyperthread. The
+                           Genoa nodes have SMT enabled (256 logical
+                           CPUs, 128 physical), and CESM performs best
+                           without SMT. -->
+    <directives>
+      <directive>--export=ALL</directive>
+      <directive>--hint=nomultithread</directive>
+    </directives>
+
+    <!-- Queues = SLURM partitions. Lemaitre4 has only one: "batch",
+         capped at 2 days (2-00:00:00 in SLURM, i.e. 48 hours). CESM
+         expects HH:MM:SS so we set walltimemax to 48:00:00.
+         The cluster has 40 nodes; nodemax=40 reflects the hardware
+         (CIME will refuse to submit jobs that need more). -->
+    <queues>
+      <queue
+          walltimemin="00:00:00"
+          walltimemax="48:00:00"
+          nodemin="1"
+          nodemax="40"
+          default="true">batch</queue>
+    </queues>
+
+  </batch_system>
+
+</config_batch>

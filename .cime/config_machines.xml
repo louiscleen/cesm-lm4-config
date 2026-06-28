@@ -1,0 +1,255 @@
+<?xml version="1.0"?>
+<config_machines version="2.0">
+
+  <!-- ============================================================
+       Lemaitre4 (CECI / CISM, UCLouvain)
+       https://www.ceci-hpc.be/clusters/lemaitre4/
+
+       Hardware: 40 nodes, AMD EPYC 9534 Genoa,
+                 2 sockets x 64 cores x 2 SMT = 128 physical cores / node
+                 (256 logical with SMT), 748 GB RAM
+       Network : InfiniBand HDR 100 Gbps
+       OS      : Linux
+       Batch   : SLURM (partition 'batch', max walltime 2 days,
+                 compute nodes lm4-w[001-040])
+
+       Modules : Lmod 8.x, EasyBuild releases.
+                 We use releases/2023a because:
+                   - it contains Python 3.10.8, which still ships the
+                     legacy 'imp' module required by CIME 5.6
+                     (used in CESM 2.1.5). Python 3.12 from
+                     releases/2024a removed 'imp' entirely.
+                   - intel-compilers/2023.1.0 still provides the
+                     classic 'icc' / 'icpc' compilers; oneAPI 2024
+                     dropped them in favor of icx / icpx only, which
+                     breaks the mpiicc wrapper used by GPTL.
+       Toolchain used:
+         intel/2023a  = intel-compilers 2023.1.0
+                        + impi 2021.9.0
+         foss/2023a   = GCC 12.3.0 + OpenMPI 4.1.5
+
+       Note: PnetCDF is NOT available as a module on Lemaitre4 today,
+             so PIO is configured to use the NetCDF backend only.
+       ============================================================ -->
+  <machine MACH="lemaitre4">
+
+    <DESC>Lemaitre4 (CECI/CISM, UCLouvain): AMD EPYC 9534 Genoa, 128 cores/node, InfiniBand HDR, SLURM</DESC>
+
+    <!-- Login node is lm4-f001.hpc.local, compute nodes are lm4-w*.hpc.local -->
+    <NODENAME_REGEX>lm4-.*\.hpc\.local</NODENAME_REGEX>
+
+    <OS>LINUX</OS>
+
+    <!-- Default compiler is intel; gnu (foss toolchain) is also supported -->
+    <COMPILERS>intel,gnu</COMPILERS>
+
+    <!-- Default MPI is impi (paired with intel); openmpi is also available
+         (paired with gnu via the foss toolchain). mpi-serial is implicit. -->
+    <MPILIBS>impi,openmpi</MPILIBS>
+
+    <!-- No accounting project is required on Lemaitre4.
+         PROJECT and CHARGE_ACCOUNT tags are intentionally omitted:
+         they are typed xs:NCName in the schema and so cannot be empty
+         strings. When omitted, CIME does not pass any account flag to
+         sbatch, which is what we want. If the user later joins a
+         project that requires accounting, they can add these tags or
+         set the variables in $HOME/.cime/config. -->
+
+    <!-- All heavy I/O goes to the BeeGFS global scratch (no quota) -->
+    <CIME_OUTPUT_ROOT>$ENV{GLOBALSCRATCH}/cesm/scratch</CIME_OUTPUT_ROOT>
+
+    <!-- CESM input data: shared dataset directory under scratch.
+         Tip: if a colleague already has a copy on $CECIHOME or
+         /scratch, point this to that path to save disk and download time. -->
+    <DIN_LOC_ROOT>$ENV{GLOBALSCRATCH}/cesm/inputdata</DIN_LOC_ROOT>
+    <DIN_LOC_ROOT_CLMFORC>$ENV{GLOBALSCRATCH}/cesm/inputdata/atm/datm7</DIN_LOC_ROOT_CLMFORC>
+
+    <DOUT_S_ROOT>$ENV{GLOBALSCRATCH}/cesm/archive/$CASE</DOUT_S_ROOT>
+    <BASELINE_ROOT>$ENV{GLOBALSCRATCH}/cesm/cesm_baselines</BASELINE_ROOT>
+
+    <!-- cprnc is built from <cesm_root>/cime/tools/cprnc by the user
+         (run gmake there once after porting). Adjust if you place it
+         elsewhere. -->
+    <CCSM_CPRNC>$ENV{GLOBALSCRATCH}/cesm/tools/cprnc/cprnc</CCSM_CPRNC>
+
+    <GMAKE>gmake</GMAKE>
+    <GMAKE_J>8</GMAKE_J>
+
+    <BATCH_SYSTEM>slurm</BATCH_SYSTEM>
+
+    <SUPPORTED_BY>lcleen -- via CISM helpdesk egs-cism@listes.uclouvain.be</SUPPORTED_BY>
+
+    <!-- Each node has 2 sockets x 64 physical cores x 2 SMT threads = 256 logical CPUs.
+         For CESM we use the 128 physical cores and ignore SMT (rarely helpful for
+         atmosphere/ocean models, and avoids cache contention).
+         If you later want to experiment with SMT, raise MAX_TASKS_PER_NODE to 256. -->
+    <MAX_TASKS_PER_NODE>128</MAX_TASKS_PER_NODE>
+    <MAX_MPITASKS_PER_NODE>128</MAX_MPITASKS_PER_NODE>
+
+    <!-- No accounting project required on Lemaitre4 (PROJECT/CHARGE_ACCOUNT
+         omitted above for the same reason). -->
+    <PROJECT_REQUIRED>FALSE</PROJECT_REQUIRED>
+
+    <!-- ============================================================
+         MPI launchers. On SLURM the recommended launcher is srun for
+         both Intel MPI and OpenMPI; it propagates the cpu binding and
+         the PMI library automatically.
+         ============================================================ -->
+    <mpirun mpilib="impi">
+      <executable>srun</executable>
+      <arguments>
+        <arg name="num_tasks"> -n {{ total_tasks }}</arg>
+        <arg name="labelstdout"> --label</arg>
+        <arg name="cpu_bind"> --cpu-bind=cores</arg>
+      </arguments>
+    </mpirun>
+
+    <mpirun mpilib="openmpi">
+      <executable>srun</executable>
+      <arguments>
+        <arg name="num_tasks"> -n {{ total_tasks }}</arg>
+        <arg name="labelstdout"> --label</arg>
+        <arg name="cpu_bind"> --cpu-bind=cores</arg>
+        <arg name="mpi"> --mpi=pmix</arg>
+      </arguments>
+    </mpirun>
+
+    <mpirun mpilib="mpi-serial">
+      <executable></executable>
+    </mpirun>
+
+    <!-- ============================================================
+         Module system: Lmod 8.x, init scripts under /usr/share/lmod/lmod/init/
+         Modules are organized by EasyBuild "releases".
+         ============================================================ -->
+    <module_system type="module" allow_error="true">
+      <init_path lang="sh">/usr/share/lmod/lmod/init/sh</init_path>
+      <init_path lang="csh">/usr/share/lmod/lmod/init/csh</init_path>
+      <init_path lang="perl">/usr/share/lmod/lmod/init/perl</init_path>
+      <init_path lang="python">/usr/share/lmod/lmod/init/env_modules_python.py</init_path>
+      <cmd_path lang="sh">module</cmd_path>
+      <cmd_path lang="csh">module</cmd_path>
+      <cmd_path lang="perl">/usr/share/lmod/lmod/libexec/lmod perl</cmd_path>
+      <cmd_path lang="python">/usr/share/lmod/lmod/libexec/lmod python</cmd_path>
+
+      <!-- Common to all builds: clean slate, then the 2023a release stack.
+           Python 3.10.8 is loaded so that the buildlib scripts shipped
+           with CESM 2.1.5 (which use a "#!/usr/bin/env python" shebang)
+           find a 'python' executable. Perl is loaded for the few CESM
+           tools that still rely on it (mainly in CAM/CLM build paths). -->
+      <modules>
+        <command name="purge"/>
+        <command name="load">releases/2023a</command>
+        <command name="load">CMake/3.26.3-GCCcore-12.3.0</command>
+        <!-- Perl-bundle-CPAN provides Perl + most CPAN modules CESM
+             needs (Cwd, File::Find, Getopt::Long, etc.).
+             XML::LibXML is NOT in the bundle on Lemaitre4: it must
+             be installed locally with cpanm; see PERL5LIB below. -->
+        <command name="load">Perl-bundle-CPAN/5.36.1-GCCcore-12.3.0</command>
+        <!-- libxml2 is loaded so the locally-installed XML::LibXML.so
+             can find libxml2.so.2 at runtime. -->
+        <command name="load">libxml2/2.11.4-GCCcore-12.3.0</command>
+        <command name="load">Python/3.10.8-GCCcore-12.2.0</command>
+      </modules>
+
+      <!-- Intel compiler stack -->
+      <modules compiler="intel">
+        <command name="load">intel-compilers/2023.1.0</command>
+      </modules>
+
+      <!-- GNU compiler stack -->
+      <modules compiler="gnu">
+        <command name="load">GCC/12.3.0</command>
+      </modules>
+
+      <!-- ===== MPI + I/O libraries ===== -->
+
+      <!-- Intel + Intel MPI: HDF5 and netCDF built against the iimpi/2023a toolchain -->
+      <modules compiler="intel" mpilib="impi">
+        <command name="load">impi/2021.9.0-intel-compilers-2023.1.0</command>
+        <command name="load">HDF5/1.14.0-iimpi-2023a</command>
+        <command name="load">netCDF/4.9.2-iimpi-2023a</command>
+        <command name="load">netCDF-Fortran/4.6.1-iimpi-2023a</command>
+        <command name="load">imkl/2023.1.0</command>
+      </modules>
+
+      <!-- GNU + OpenMPI: HDF5/netCDF built against the gompi/2023a toolchain -->
+      <modules compiler="gnu" mpilib="openmpi">
+        <command name="load">OpenMPI/4.1.5-GCC-12.3.0</command>
+        <command name="load">HDF5/1.14.0-gompi-2023a</command>
+        <command name="load">netCDF/4.9.2-gompi-2023a</command>
+        <command name="load">netCDF-Fortran/4.6.1-gompi-2023a</command>
+      </modules>
+
+      <!-- Serial builds (no MPI): keep the netCDF modules; they work
+           fine for single-process I/O. -->
+      <modules compiler="intel" mpilib="mpi-serial">
+        <command name="load">HDF5/1.14.0-iimpi-2023a</command>
+        <command name="load">netCDF/4.9.2-iimpi-2023a</command>
+        <command name="load">netCDF-Fortran/4.6.1-iimpi-2023a</command>
+        <command name="load">imkl/2023.1.0</command>
+      </modules>
+      <modules compiler="gnu" mpilib="mpi-serial">
+        <command name="load">HDF5/1.14.0-gompi-2023a</command>
+        <command name="load">netCDF/4.9.2-gompi-2023a</command>
+        <command name="load">netCDF-Fortran/4.6.1-gompi-2023a</command>
+      </modules>
+
+    </module_system>
+
+    <!-- ============================================================
+         Runtime environment variables
+         ============================================================ -->
+    <environment_variables>
+      <!-- OpenMP: large stacks are needed by several CESM components -->
+      <env name="OMP_STACKSIZE">256M</env>
+      <!-- Be explicit about pinning so srun and the runtime agree -->
+      <env name="OMP_PROC_BIND">spread</env>
+      <env name="OMP_PLACES">cores</env>
+
+      <!-- Help the netCDF libraries find their roots (EasyBuild sets EBROOT*) -->
+      <env name="NETCDF_PATH">$ENV{EBROOTNETCDF}</env>
+      <env name="NETCDF_C_PATH">$ENV{EBROOTNETCDF}</env>
+      <env name="NETCDF_FORTRAN_PATH">$ENV{EBROOTNETCDFMINFORTRAN}</env>
+
+      <!-- CLM's build-namelist (Perl) needs XML::LibXML, which is not
+           shipped in any EasyBuild Perl-bundle-CPAN on Lemaitre4.
+           We install it with cpanm into $HOME/perl5 and point PERL5LIB
+           here so CIME finds it. Two paths because XS modules with
+           native code (.so) live under .../x86_64-linux-thread-multi/
+           and pure-Perl modules live one level up. -->
+      <env name="PERL5LIB">$ENV{HOME}/perl5/lib/perl5/x86_64-linux-thread-multi:$ENV{HOME}/perl5/lib/perl5</env>
+    </environment_variables>
+
+    <environment_variables mpilib="impi">
+      <!-- Intel MPI: tell it to use the SLURM PMI library so srun works -->
+      <env name="I_MPI_PMI_LIBRARY">/usr/lib64/libpmi2.so</env>
+      <env name="I_MPI_FABRICS">shm:ofi</env>
+      <env name="FI_PROVIDER">mlx</env>
+      <!-- Disable hcoll (Mellanox Hierarchical Collectives library).
+           Intel MPI 2021.x activates hcoll by default on InfiniBand,
+           but it crashes during MPI_Init on Lemaitre4 with the stack:
+             hcoll_init_with_opts -> hmca_bcol_base_init
+             -> hmca_bcol_ucx_p2p_init_query -> SIGSEGV (signal 11)
+           Falls back to the standard Intel MPI collectives, which work
+           fine. Performance impact for CESM is negligible. -->
+      <env name="I_MPI_COLL_EXTERNAL">0</env>
+      <env name="I_MPI_HBW_POLICY"></env>
+      <env name="HCOLL_ENABLE_MCAST_ALL">0</env>
+    </environment_variables>
+
+    <environment_variables mpilib="openmpi">
+      <!-- OpenMPI 4 picks UCX automatically on InfiniBand;
+           these knobs are quiet-time tuning. -->
+      <env name="OMPI_MCA_pml">ucx</env>
+      <env name="OMPI_MCA_btl">^vader,tcp,openib,uct</env>
+    </environment_variables>
+
+    <!-- Stack size limit: CESM needs unlimited -->
+    <resource_limits>
+      <resource name="RLIMIT_STACK">-1</resource>
+    </resource_limits>
+
+  </machine>
+
+</config_machines>

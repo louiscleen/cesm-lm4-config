@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config_compilers version="2.0">
+
+  <!-- ============================================================
+       Compiler-flag definitions for Lemaitre4 (CECI/CISM, UCLouvain)
+
+       Hardware: AMD EPYC 9534 (Zen 4 / Genoa), AVX2 + AVX-512 capable
+
+       Toolchains (EasyBuild releases/2023a):
+         * intel/2023a  : intel-compilers 2023.1.0 + impi 2021.9.0
+                          (classic icc/icpc/ifort + new icx/icpx/ifx)
+         * foss/2023a   : GCC 12.3.0 + OpenMPI 4.1.5
+
+       Notes:
+         - On AMD CPUs, Intel's -xHost is BROKEN (falls back to x87).
+           We use -march=core-avx2 instead, as the AMD-targeted
+           machines in this file (aws-hpc6a) already do.
+         - For GCC 12.3, -march=znver4 selects native Zen 4 codegen
+           including AVX-512 (znver4 support landed in GCC 12).
+         - PnetCDF is NOT available on Lemaitre4; we link only against
+           netCDF and netCDF-Fortran. Their paths come from the
+           EasyBuild env vars EBROOTNETCDF / EBROOTNETCDFMINFORTRAN
+           set by config_machines.xml.
+       ============================================================ -->
+
+  <!-- =========================================================
+       Intel compiler on Lemaitre4 (intel/2023a)
+       Uses classic icc/icpc/ifort, which are still present in
+       intel-compilers/2023.1.0 (removed only in 2024+).
+       ========================================================= -->
+  <compiler MACH="lemaitre4" COMPILER="intel">
+
+    <SFC>ifort</SFC>
+    <SCC>icc</SCC>
+    <SCXX>icpc</SCXX>
+    <MPIFC>mpiifort</MPIFC>
+    <MPICC>mpiicc</MPICC>
+    <MPICXX>mpiicpc</MPICXX>
+
+    <CPPDEFS>
+      <!-- GPTL nanotimer support: standard set on Linux/Intel -->
+      <append MODEL="gptl"> -DHAVE_NANOTIME -DBIT64 -DHAVE_VPRINTF -DHAVE_BACKTRACE -DHAVE_SLASHPROC -DHAVE_COMM_F2C -DHAVE_TIMES -DHAVE_GETTIMEOFDAY </append>
+      <!-- No tuned vector math lib bundled with PIO on this machine.
+           Same setting as aws-hpc6a (which is also AMD). -->
+      <append> -DNO_SHR_VMATH </append>
+    </CPPDEFS>
+
+    <!-- Architecture targeting for AMD Genoa.
+         WARNING: -xHost is broken on AMD with Intel >= 19.1
+         (it produces x87 code). Use -march=core-avx2 instead.
+         -no-fma keeps results bit-identical to other CESM builds
+         (CESM testing assumes no FMA). -->
+    <CFLAGS>
+      <append> -march=core-avx2 -mtune=core-avx2 -no-fma </append>
+    </CFLAGS>
+    <FFLAGS>
+      <append> -march=core-avx2 -mtune=core-avx2 -no-fma </append>
+      <!-- MOM6 requires -r8 -->
+      <append MODEL="mom"> -r8 </append>
+    </FFLAGS>
+
+    <!-- NetCDF: EasyBuild sets EBROOTNETCDF and EBROOTNETCDFMINFORTRAN
+         when the netCDF/4.9.2-iimpi-2023a and netCDF-Fortran/4.6.1-iimpi-2023a
+         modules are loaded. -->
+    <NETCDF_PATH>$ENV{EBROOTNETCDF}</NETCDF_PATH>
+    <NETCDF_C_PATH>$ENV{EBROOTNETCDF}</NETCDF_C_PATH>
+    <NETCDF_FORTRAN_PATH>$ENV{EBROOTNETCDFMINFORTRAN}</NETCDF_FORTRAN_PATH>
+
+    <SLIBS>
+      <!-- Link order matters: Fortran wrapper first, then C lib.
+           Add rpath so the executable finds the libs at run time
+           even outside the module environment. -->
+      <append> -L$(NETCDF_FORTRAN_PATH)/lib -Wl,-rpath,$(NETCDF_FORTRAN_PATH)/lib -lnetcdff </append>
+      <append> -L$(NETCDF_C_PATH)/lib -Wl,-rpath,$(NETCDF_C_PATH)/lib -lnetcdf </append>
+      <!-- Intel MKL (provided by the imkl module): the default rules
+           in the generic <compiler COMPILER="intel"> block add
+           "-mkl=cluster" for impi, which intel-compilers/2023.1.0
+           still understands. -->
+    </SLIBS>
+
+  </compiler>
+
+  <!-- =========================================================
+       GNU (foss/2023a) compiler on Lemaitre4
+       ========================================================= -->
+  <compiler MACH="lemaitre4" COMPILER="gnu">
+
+    <CPPDEFS>
+      <append MODEL="gptl"> -DHAVE_NANOTIME -DBIT64 -DHAVE_VPRINTF -DHAVE_BACKTRACE -DHAVE_SLASHPROC -DHAVE_COMM_F2C -DHAVE_TIMES -DHAVE_GETTIMEOFDAY </append>
+      <append> -DNO_SHR_VMATH </append>
+    </CPPDEFS>
+
+    <!-- GCC 12.3 knows -march=znver4 (Zen 4 / Genoa).
+         -mno-fma keeps results comparable to other CESM platforms
+         (CESM bit-for-bit testing is sensitive to FMA reordering).
+         Drop -mno-fma if you want the extra performance and don't
+         run regression tests. -->
+    <CFLAGS>
+      <append> -march=znver4 -mtune=znver4 -mno-fma </append>
+    </CFLAGS>
+    <FFLAGS>
+      <append> -march=znver4 -mtune=znver4 -mno-fma </append>
+      <!-- GCC 10+ rejects argument-type mismatches by default; many
+           older Fortran codes inside CESM still trip on this. -->
+      <append> -fallow-argument-mismatch -fallow-invalid-boz </append>
+      <append MODEL="mom"> -fdefault-real-8 </append>
+    </FFLAGS>
+
+    <!-- foss/2023a uses standard mpicc/mpif90 wrappers from OpenMPI -->
+    <MPIFC>mpif90</MPIFC>
+    <MPICC>mpicc</MPICC>
+    <MPICXX>mpicxx</MPICXX>
+    <SFC>gfortran</SFC>
+    <SCC>gcc</SCC>
+    <SCXX>g++</SCXX>
+
+    <NETCDF_PATH>$ENV{EBROOTNETCDF}</NETCDF_PATH>
+    <NETCDF_C_PATH>$ENV{EBROOTNETCDF}</NETCDF_C_PATH>
+    <NETCDF_FORTRAN_PATH>$ENV{EBROOTNETCDFMINFORTRAN}</NETCDF_FORTRAN_PATH>
+
+    <SLIBS>
+      <append> -L$(NETCDF_FORTRAN_PATH)/lib -Wl,-rpath,$(NETCDF_FORTRAN_PATH)/lib -lnetcdff </append>
+      <append> -L$(NETCDF_C_PATH)/lib -Wl,-rpath,$(NETCDF_C_PATH)/lib -lnetcdf </append>
+      <!-- foss/2023a ships FlexiBLAS / OpenBLAS for BLAS+LAPACK -->
+      <append> -lflexiblas </append>
+    </SLIBS>
+
+  </compiler>
+
+</config_compilers>
