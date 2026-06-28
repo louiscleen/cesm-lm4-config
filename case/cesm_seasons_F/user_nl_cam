@@ -1,0 +1,15 @@
+! Users should add all user specific namelist changes below in the form of 
+! namelist_var = new_namelist_value 
+ 
+nhtfrq = -24
+mfilt  = 1
+
+! ===================================================================
+! Output configuration: h0 monthly enriched + h1 daily for key fields
+! ===================================================================
+nhtfrq = 0, -24   ! h0 = monthly mean, h1 = daily mean
+mfilt  = 1, 31     ! h0: 1 month/file, h1: 31 days/file
+
+fincl1 = 'T', 'TS', 'TREFHT', 'PRECT', 'PRECC', 'PRECL', 'PSL', 'PS', 'U', 'U200', 'U850', 'V', 'V200', 'V850', 'OMEGA', 'OMEGA500', 'Z500', 'CLDTOT', 'CLDLOW', 'CLDMED', 'CLDHGH', 'Z3', 'FLNT', 'FSNT', 'LHFLX', 'SHFLX'
+
+fincl2 = 'TS', 'TREFHT', 'TREFHTMN', 'TREFHTMX', 'PRECT', 'PSL', 'FSNS', 'FLNS', 'LHFLX', 'SHFLX'
