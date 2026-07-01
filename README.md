@@ -293,7 +293,7 @@ case.st_archive    # archive sorties
 
 
 ## Run compset F2000climo
-[To be continued]
+[To be continued]  
 
 Passons aux choses sérieuses. Nous proposons ici de simuler 13 mois (1 an + 1 mois de spin-up) afin de valider le bon fonctionnement du modèle. Pour réaliser cela dans un temps raisonnable, nous utiliserons un compset basé sur l'année 2000, dans lequel l'océan est prescrit, tandis que les composantes CAM, CLM et MOSART restent actives. Nous enregistrerons notamment les précipitations ainsi que les vents à 850 hPa afin de mettre en évidence le cycle saisonnier de la circulation atmosphérique et des moussons.  
 
@@ -350,6 +350,13 @@ Ensuite :
 
 Les données de sorties devraient représentées environ 3.2G.
 
+### Analyse des données
+[To be continued]  
+
+Les sorties du modèle sont au format NetCED (.nc), un format standard (et généralement compressé) pour les modèles climatiques et les observations géophysiques.  
+Pour ouvrir ces fichiers, de nombreuses méthodes existent. Si vous souhaitez visualiser ces données répidement, sans devoir écrire de code informatique, nous suggérons le programme [Panoply](https://www.giss.nasa.gov/tools/panoply/)  de la NASA (il requiert Java d'installé sur votre ordinateur). Il est accessible et intuitif a utilisé.
+
+Pour aller pluis loin, nous proposons d'écrire des scripts en Python. Comme exemple, vous trouverez dans le dossier `scripts` du dépot le script `CESM_PRECT_U850_12months.py` qui permet de réaliser un .gif sur une année des précipitations et vents à 850 hPa afin de mettre mettre en évidence le cycle saisonnier de la circulation atmosphérique et des moussons.
 
 
 ## Run compset B2000
